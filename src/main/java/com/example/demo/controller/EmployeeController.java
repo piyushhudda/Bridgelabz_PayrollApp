@@ -2,7 +2,11 @@ package com.example.demo.controller;
 
 import com.example.demo.model.Employee;
 import com.example.demo.repository.EmployeeRepository;
+
+import jakarta.validation.Valid;
+
 import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.*;
 
@@ -20,61 +24,79 @@ public class EmployeeController {
 
     // Get all employees
     @GetMapping
-    public List<EmployeeDTO> getAllEmployees() {
+    public ResponseEntity<List<EmployeeDTO>> getAllEmployees() {
         List<Employee> employees = employeeRepository.findAll();
-        return employees.stream()
+        List<EmployeeDTO> employeeDTOs = employees.stream()
                 .map(this::convertToDTO)
                 .collect(Collectors.toList());
+        return ResponseEntity.ok(employeeDTOs);
     }
 
     // Add a new employee
     @PostMapping
-    public EmployeeDTO addEmployee(@RequestBody EmployeeDTO employeeDTO) {
-        Employee employee = convertToEntity(employeeDTO);
-        Employee savedEmployee = employeeRepository.save(employee);
-        return convertToDTO(savedEmployee);
+    public ResponseEntity<EmployeeDTO> addEmployee(@Valid @RequestBody EmployeeDTO employeeDTO) {
+        try {
+            Employee employee = convertToEntity(employeeDTO);
+            Employee savedEmployee = employeeRepository.save(employee);
+            return new ResponseEntity<>(convertToDTO(savedEmployee), HttpStatus.CREATED);
+        } catch (Exception e) {
+            e.printStackTrace(); // Log the exception for debugging
+            return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR).build();
+        }
     }
 
     // Get employee by ID
     @GetMapping("/{id}")
     public ResponseEntity<EmployeeDTO> getEmployeeById(@PathVariable Long id) {
-        return employeeRepository.findById(id)
-                .map(employee -> ResponseEntity.ok(convertToDTO(employee)))
-                .orElse(ResponseEntity.notFound().build());
-    }
-
-    // Update employee by ID
-    @PutMapping("/{id}")
-    public ResponseEntity<EmployeeDTO> updateEmployee(@PathVariable Long id, @RequestBody EmployeeDTO employeeDTO) {
-        return employeeRepository.findById(id)
-                .map(employee -> {
-                    Employee updatedEmployee = convertToEntity(employeeDTO);
-                    // preserve the original ID
-                    updatedEmployee.setId(employee.getId()); 
-                    Employee savedEmployee = employeeRepository.save(updatedEmployee);
-                    return ResponseEntity.ok(convertToDTO(savedEmployee));
-                })
-                .orElse(ResponseEntity.notFound().build());
-    }
-
-    // Delete employee by ID
-    @DeleteMapping("/{id}")
-    public ResponseEntity<Void> deleteEmployee(@PathVariable Long id) {
-        if (employeeRepository.existsById(id)) {
-            employeeRepository.deleteById(id);
-            return ResponseEntity.noContent().build();
-        } else {
+        Employee employee = employeeRepository.findById(id).orElse(null);
+        if (employee == null) {
             return ResponseEntity.notFound().build();
+        }
+        return ResponseEntity.ok(convertToDTO(employee));
+    }
+
+    // Update an employee
+    @PutMapping("/{id}")
+    public ResponseEntity<EmployeeDTO> updateEmployee(@PathVariable Long id, @Valid @RequestBody EmployeeDTO employeeDTO) {
+        Employee existingEmployee = employeeRepository.findById(id).orElse(null);
+        if (existingEmployee == null) {
+            return ResponseEntity.notFound().build();
+        }
+
+        try {
+            Employee updatedEmployee = convertToEntity(employeeDTO);
+            updatedEmployee.setId(id); // ensure the entity has the correct ID
+            Employee savedEmployee = employeeRepository.save(updatedEmployee);
+            return ResponseEntity.ok(convertToDTO(savedEmployee));
+        } catch (Exception e) {
+            e.printStackTrace(); // Log the exception
+            return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR).build();
         }
     }
 
-    // Conversion methods
-    private EmployeeDTO convertToDTO(Employee employee) {
-        return new EmployeeDTO(employee.getName(), employee.getSalary());
+    // Convert EmployeeDTO to Employee entity
+    private Employee convertToEntity(EmployeeDTO employeeDTO) {
+        if (employeeDTO == null) return null;
+
+        Employee employee = new Employee();
+        // Map fields from DTO to entity
+        employee.setId(employeeDTO.getId()); // For creation, ID can be null
+        employee.setName(employeeDTO.getName());
+        employee.setSalary(employeeDTO.getSalary());
+        // Add other fields if present
+        return employee;
     }
 
-    private Employee convertToEntity(EmployeeDTO dto) {
-        // Assuming department is optional or can be null
-        return new Employee(dto.getName(), dto.getSalary(), null);
+    // Convert Employee entity to EmployeeDTO
+    private EmployeeDTO convertToDTO(Employee employee) {
+        if (employee == null) return null;
+
+        EmployeeDTO employeeDTO = new EmployeeDTO();
+        // Map fields from entity to DTO
+        employeeDTO.setId(employee.getId());
+        employeeDTO.setName(employee.getName());
+        employeeDTO.setSalary(employee.getSalary());
+        // Add other fields if present
+        return employeeDTO;
     }
 }
